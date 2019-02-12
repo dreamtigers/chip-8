@@ -1,3 +1,5 @@
+mod display;
+
 pub struct Chip8 {
     // Index Register for memory addresses
     pub i: u16,
@@ -9,6 +11,8 @@ pub struct Chip8 {
     pub sp: u8,
     pub stack: [u16; 16],
     pub memory: [u8; 4096],
+
+    pub screen: [[u8; 64]; 32],
 }
 
 impl Chip8 {
@@ -26,16 +30,13 @@ impl Chip8 {
             v: [0; 16],
             stack: [0; 16],
             memory: memory,
+            screen: [[0u8; 64]; 32],
         }
     }
 
     pub fn cycle(&self) -> () {
         // help
         let opcode = (self.memory[self.pc] as u16) << 8 | (self.memory[self.pc + 1] as u16);
-    }
-
-    pub fn draw(&self) -> () {
-        // pls
     }
 }
 
