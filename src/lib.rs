@@ -1,4 +1,8 @@
-mod display;
+pub const CHIP8_WIDTH: usize = 64;
+pub const CHIP8_HEIGHT: usize = 32;
+pub const CHIP8_RAM: usize = 4096;
+
+const OPCODE_SIZE: usize = 2;
 
 pub struct Chip8 {
     // Index Register for memory addresses
@@ -10,14 +14,14 @@ pub struct Chip8 {
     // Stack pointer, points to the topmost level of the stack
     pub sp: u8,
     pub stack: [u16; 16],
-    pub memory: [u8; 4096],
+    pub memory: [u8; CHIP8_RAM],
 
-    pub screen: [[u8; 64]; 32],
+    pub screen: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
 }
 
 impl Chip8 {
     pub fn new() -> Chip8 {
-        let mut memory = [0u8; 4096];
+        let mut memory = [0u8; CHIP8_RAM];
 
         for i in 0..FONT_SET.len() {
             memory[i] = FONT_SET[i];
@@ -30,7 +34,7 @@ impl Chip8 {
             v: [0; 16],
             stack: [0; 16],
             memory: memory,
-            screen: [[0u8; 64]; 32],
+            screen: [[0u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
         }
     }
 

@@ -4,6 +4,9 @@ use sdl2::rect::Rect;
 use sdl2::render::Canvas;
 use sdl2::video::Window;
 
+use chip_8::CHIP8_WIDTH;
+use chip_8::CHIP8_HEIGHT;
+
 const SCALE: u32 = 16;
 
 pub struct Display {
@@ -32,7 +35,7 @@ impl Display {
         }
     }
 
-    pub fn draw(&mut self, screen: &[[u8; 64]; 32]) {
+    pub fn draw(&mut self, screen: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]) {
         println!("help");
         for (y, row) in screen.iter().enumerate() {
             for (x, &col) in row.iter().enumerate() {
