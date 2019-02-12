@@ -7,7 +7,7 @@ use chip_8::Chip8;
 
 // Chip-8 Ran at 60 Hz, or 60 frames/second.
 // That means each frame lasted 16.7 =~ 17 ms.
-const TIME = Duration::from_millis(17);
+const TIME : Duration = Duration::from_millis(17);
 
 fn main() {
     let mut chip8 = Chip8::new();
