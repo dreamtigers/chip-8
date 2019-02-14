@@ -1,3 +1,5 @@
+use rand;
+
 pub const CHIP8_WIDTH: usize = 64;
 pub const CHIP8_HEIGHT: usize = 32;
 pub const CHIP8_RAM: usize = 4096;
@@ -100,7 +102,7 @@ impl Chip8 {
             (0x09,    _,    _, 0x00) => self.op_9xy0(x, y),
             (0x0a,    _,    _,    _) => self.op_annn(nnn),
             (0x0b,    _,    _,    _) => self.op_bnnn(nnn),
-            // (0x0c,    _,    _,    _) => self.op_cxkk(x, kk),
+            (0x0c,    _,    _,    _) => self.op_cxkk(x, kk),
             // (0x0d,    _,    _,    _) => self.op_dxyn(x, y, n),
             // (0x0e,    _, 0x09, 0x0e) => self.op_ex9e(x),
             // (0x0e,    _, 0x0a, 0x01) => self.op_exa1(x),
@@ -260,6 +262,12 @@ impl Chip8 {
 
     fn op_bnnn(&mut self, nnn: u16) -> ProgramCounter {
         ProgramCounter::Jump(nnn + (self.v[0] as u16))
+    }
+
+    fn op_cxkk(&mut self, x: usize, kk: u8) -> ProgramCounter {
+        self.v[x] = rand::random::<u8>() & kk;
+
+        ProgramCounter::Next
     }
 }
 
@@ -597,10 +605,19 @@ mod tests {
         assert_eq!(chip8.pc, 0x128);
     }
 
-    // #[test]
-    // fn test_op_cxkk() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    #[test]
+    fn test_op_cxkk() {
+        let mut chip8 = Chip8::new();
+        chip8.v[0] = 0;
+
+        chip8.run_opcode(0xc000);
+
+        assert_eq!(chip8.v[0], 0x0);
+
+        chip8.run_opcode(0xc00F);
+
+        assert_eq!(chip8.v[0] & 0xF0, 0x0);
+    }
 
     // #[test]
     // fn test_op_dxyn() {
