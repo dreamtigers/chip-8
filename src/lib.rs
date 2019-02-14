@@ -103,7 +103,7 @@ impl Chip8 {
             (0x0a,    _,    _,    _) => self.op_annn(nnn),
             (0x0b,    _,    _,    _) => self.op_bnnn(nnn),
             (0x0c,    _,    _,    _) => self.op_cxkk(x, kk),
-            // (0x0d,    _,    _,    _) => self.op_dxyn(x, y, n),
+            (0x0d,    _,    _,    _) => self.op_dxyn(x, y, n),
             // (0x0e,    _, 0x09, 0x0e) => self.op_ex9e(x),
             // (0x0e,    _, 0x0a, 0x01) => self.op_exa1(x),
             // (0x0f,    _, 0x00, 0x07) => self.op_fx07(x),
@@ -266,6 +266,20 @@ impl Chip8 {
 
     fn op_cxkk(&mut self, x: usize, kk: u8) -> ProgramCounter {
         self.v[x] = rand::random::<u8>() & kk;
+
+        ProgramCounter::Next
+    }
+
+    fn op_dxyn(&mut self, x: usize, y: usize, n: usize) -> ProgramCounter {
+        for byte in 0..n {
+            let y = (self.v[y] as usize + byte) % CHIP8_HEIGHT;
+            for bit in 0..8 {
+                let x = (self.v[x] as usize + bit) % CHIP8_WIDTH;
+                let color = ((self.memory[(self.i as usize) + byte]) >> (7 - bit)) & 1;
+                self.v[0xF] |= color & self.screen[y][x];
+                self.screen[y][x] ^= color;
+            }
+        }
 
         ProgramCounter::Next
     }
@@ -619,10 +633,27 @@ mod tests {
         assert_eq!(chip8.v[0] & 0xF0, 0x0);
     }
 
-    // #[test]
-    // fn test_op_dxyn() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+#[test]
+    fn test_op_dxyn() {
+        let mut chip8 = Chip8::new();
+
+        chip8.i = 0;
+        chip8.memory[0] = 0b11111111;
+        chip8.memory[1] = 0b00000000;
+        chip8.screen[0][0] = 1;
+        chip8.screen[0][1] = 0;
+        chip8.screen[1][0] = 1;
+        chip8.screen[1][1] = 0;
+        chip8.v[0] = 0;
+        chip8.run_opcode(0xd002);
+
+        assert_eq!(chip8.screen[0][0], 0);
+        assert_eq!(chip8.screen[0][1], 1);
+        assert_eq!(chip8.screen[1][0], 1);
+        assert_eq!(chip8.screen[1][1], 0);
+        assert_eq!(chip8.v[0x0f], 1);
+        assert_eq!(chip8.pc, 0x202);
+    }
 
     // #[test]
     // fn test_op_ex9e() {
