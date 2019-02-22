@@ -12,19 +12,33 @@ enum ProgramCounter {
     Jump(u16),
 }
 
+impl ProgramCounter {
+    fn skip_if(condition: bool) -> ProgramCounter {
+        if condition {
+            ProgramCounter::Skip
+        } else {
+            ProgramCounter::Next
+        }
+    }
+}
+
 pub struct Chip8 {
     // Index Register for memory addresses
-    pub i: u16,
+    i: u16,
     // General purpose registers
-    pub v: [u8; 16],
+    v: [u8; 16],
     // u16 Program counter, not accessable from Chip-8 programs, stores current executing address.
-    pub pc: usize,
+    pc: usize,
     // Stack pointer, points to the topmost level of the stack
-    pub sp: usize,
-    pub stack: [u16; 16],
-    pub memory: [u8; CHIP8_RAM],
-
+    sp: usize,
+    // Stack, used for recursion.
+    stack: [u16; 16],
+    // The RAM
+    memory: [u8; CHIP8_RAM],
     pub screen: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
+    keypad: [bool; 16],
+    delay_timer: u8,
+    sound_timer: u8,
 }
 
 impl Chip8 {
@@ -43,6 +57,9 @@ impl Chip8 {
             stack: [0; 16],
             memory: memory,
             screen: [[0u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
+            keypad: [false; 16],
+            delay_timer: 0,
+            sound_timer: 0,
         }
     }
 
@@ -58,29 +75,36 @@ impl Chip8 {
 
     }
 
-    pub fn cycle(&self) -> () {
-        // help
-        let opcode = self.get_opcode();
+    pub fn cycle(&mut self, keypad: [bool; 16]) -> () {
+        self.keypad = keypad;
+
+        if self.delay_timer > 0 {
+            self.delay_timer -= 1
+        }
+        if self.sound_timer > 0 {
+            self.sound_timer -= 1
+        }
+
+        let opcode = self.read_opcode();
+
+        self.eval_opcode(opcode);
     }
 
-    pub fn get_opcode(&self) -> u16 {
+    pub fn read_opcode(&self) -> u16 {
         (self.memory[self.pc] as u16) << 8 | (self.memory[self.pc + 1] as u16)
     }
 
-    fn run_opcode(&mut self, opcode: u16) {
-        let nibbles = (
-            (opcode & 0xF000) >> 12 as u8,
-            (opcode & 0x0F00) >> 8 as u8,
-            (opcode & 0x00F0) >> 4 as u8,
-            (opcode & 0x000F) as u8,
-            );
+    fn eval_opcode(&mut self, opcode: u16) {
+        // These are the nibbles (groups of 4 bits)
+        let op = ((opcode & 0xF000) >> 12) as usize;
+        let x = ((opcode & 0x0F00) >> 8) as usize;
+        let y = ((opcode & 0x00F0) >> 4) as usize;
+        let n = (opcode & 0x000F) as usize;
+
         let nnn = (opcode & 0x0FFF) as u16;
         let kk = (opcode & 0x00FF) as u8;
-        let x = nibbles.1 as usize;
-        let y = nibbles.2 as usize;
-        let n = nibbles.3 as usize;
 
-        let pc_change = match nibbles {
+        let pc_change = match (op, x, y, n) {
             (0x00, 0x00, 0x0e, 0x00) => self.op_00e0(),
             (0x00, 0x00, 0x0e, 0x0e) => self.op_00ee(),
             (0x01,    _,    _,    _) => self.op_1nnn(nnn),
@@ -104,14 +128,14 @@ impl Chip8 {
             (0x0b,    _,    _,    _) => self.op_bnnn(nnn),
             (0x0c,    _,    _,    _) => self.op_cxkk(x, kk),
             (0x0d,    _,    _,    _) => self.op_dxyn(x, y, n),
-            // (0x0e,    _, 0x09, 0x0e) => self.op_ex9e(x),
-            // (0x0e,    _, 0x0a, 0x01) => self.op_exa1(x),
-            // (0x0f,    _, 0x00, 0x07) => self.op_fx07(x),
+            (0x0e,    _, 0x09, 0x0e) => self.op_ex9e(x),
+            (0x0e,    _, 0x0a, 0x01) => self.op_exa1(x),
+            (0x0f,    _, 0x00, 0x07) => self.op_fx07(x),
             // (0x0f,    _, 0x00, 0x0a) => self.op_fx0a(x),
-            // (0x0f,    _, 0x01, 0x05) => self.op_fx15(x),
-            // (0x0f,    _, 0x01, 0x08) => self.op_fx18(x),
-            // (0x0f,    _, 0x01, 0x0e) => self.op_fx1e(x),
-            // (0x0f,    _, 0x02, 0x09) => self.op_fx29(x),
+            (0x0f,    _, 0x01, 0x05) => self.op_fx15(x),
+            (0x0f,    _, 0x01, 0x08) => self.op_fx18(x),
+            (0x0f,    _, 0x01, 0x0e) => self.op_fx1e(x),
+            (0x0f,    _, 0x02, 0x09) => self.op_fx29(x),
             // (0x0f,    _, 0x03, 0x03) => self.op_fx33(x),
             // (0x0f,    _, 0x05, 0x05) => self.op_fx55(x),
             // (0x0f,    _, 0x06, 0x05) => self.op_fx65(x),
@@ -153,27 +177,15 @@ impl Chip8 {
     }
 
     fn op_3xkk(&self, x: usize, kk: u8) -> ProgramCounter {
-        if self.v[x] == kk {
-            ProgramCounter::Skip
-        } else {
-            ProgramCounter::Next
-        }
+        ProgramCounter::skip_if(self.v[x] == kk)
     }
 
     fn op_4xkk(&self, x: usize, kk: u8) -> ProgramCounter {
-        if self.v[x] != kk {
-            ProgramCounter::Skip
-        } else {
-            ProgramCounter::Next
-        }
+        ProgramCounter::skip_if(self.v[x] != kk)
     }
 
     fn op_5xy0(&self, x: usize, y: usize) -> ProgramCounter {
-        if self.v[x] == self.v[y] {
-            ProgramCounter::Skip
-        } else {
-            ProgramCounter::Next
-        }
+        ProgramCounter::skip_if(self.v[x] == self.v[y])
     }
 
     fn op_6xkk(&mut self, x: usize, kk: u8) -> ProgramCounter {
@@ -247,11 +259,7 @@ impl Chip8 {
     }
 
     fn op_9xy0(&mut self, x: usize, y: usize) -> ProgramCounter {
-        if self.v[x] != self.v[y] {
-            ProgramCounter::Skip
-        } else {
-            ProgramCounter::Next
-        }
+        ProgramCounter::skip_if(self.v[x] != self.v[y])
     }
 
     fn op_annn(&mut self, nnn: u16) -> ProgramCounter {
@@ -280,6 +288,56 @@ impl Chip8 {
                 self.screen[y][x] ^= color;
             }
         }
+
+        ProgramCounter::Next
+    }
+
+    fn op_ex9e(&mut self, x: usize) -> ProgramCounter {
+        ProgramCounter::skip_if(self.keypad[self.v[x] as usize])
+    }
+
+    fn op_exa1(&mut self, x: usize) -> ProgramCounter {
+        ProgramCounter::skip_if(!self.keypad[self.v[x] as usize])
+    }
+
+    fn op_fx07(&mut self, x: usize) -> ProgramCounter {
+        self.v[x] = self.delay_timer;
+
+        ProgramCounter::Next
+    }
+
+    // fn op_fx0a(&mut self, x: usize) -> ProgramCounter {
+    //     self.v[x] = self.i;
+
+    //     ProgramCounter::Next
+    // }
+
+    fn op_fx15(&mut self, x: usize) -> ProgramCounter {
+        self.delay_timer = self.v[x];
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx18(&mut self, x: usize) -> ProgramCounter {
+        self.sound_timer = self.v[x];
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx1e(&mut self, x: usize) -> ProgramCounter {
+        self.i = match self.i.checked_add(self.v[x] as u16) {
+            Some(n) => n,
+            None => {
+                self.v[0xF] = 1;
+                self.i.wrapping_add(self.v[x] as u16)
+            },
+        };
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx29(&mut self, x: usize) -> ProgramCounter {
+        self.i = (self.v[x] as u16) * 5;
 
         ProgramCounter::Next
     }
@@ -330,7 +388,7 @@ mod tests {
             }
         }
 
-        chip8.run_opcode(0x00E0);
+        chip8.eval_opcode(0x00E0);
 
         for y in 0..CHIP8_HEIGHT {
             for x in 0..CHIP8_WIDTH {
@@ -347,7 +405,7 @@ mod tests {
         chip8.sp = 1;
         chip8.stack[chip8.sp as usize] = 0x200;
 
-        chip8.run_opcode(0x00EE);
+        chip8.eval_opcode(0x00EE);
 
         assert_eq!(chip8.pc, 0x200, "Program Counter");
         assert_eq!(chip8.stack[0], 0, "Stack");
@@ -358,7 +416,7 @@ mod tests {
     fn test_op_1nnn() {
         let mut chip8 = Chip8::new();
 
-        chip8.run_opcode(0x1F4C);
+        chip8.eval_opcode(0x1F4C);
 
         assert_eq!(chip8.pc, 0x0F4C);
     }
@@ -367,7 +425,7 @@ mod tests {
     fn test_op_2nnn() {
         let mut chip8 = Chip8::new();
 
-        chip8.run_opcode(0x2F4C);
+        chip8.eval_opcode(0x2F4C);
 
         assert_eq!(chip8.pc, 0x0F4C, "Program Counter");
         assert_eq!(chip8.stack[0], 0x200 as u16, "Stack");
@@ -380,11 +438,11 @@ mod tests {
         chip8.v[2] = 0x02;
         chip8.v[5] = 0x05;
 
-        chip8.run_opcode(0x3202);
+        chip8.eval_opcode(0x3202);
 
         assert_eq!(chip8.pc, 0x204, "Skip");
 
-        chip8.run_opcode(0x3506);
+        chip8.eval_opcode(0x3506);
 
         assert_eq!(chip8.pc, 0x206, "Next");
     }
@@ -395,11 +453,11 @@ mod tests {
         chip8.v[5] = 0x66;
         chip8.v[2] = 0x4C;
 
-        chip8.run_opcode(0x4577);
+        chip8.eval_opcode(0x4577);
 
         assert_eq!(chip8.pc, 0x204, "Skip");
 
-        chip8.run_opcode(0x424C);
+        chip8.eval_opcode(0x424C);
 
         assert_eq!(chip8.pc, 0x206, "Next");
     }
@@ -411,11 +469,11 @@ mod tests {
         chip8.v[8] = 0x08;
         chip8.v[9] = 0x07;
 
-        chip8.run_opcode(0x5790);
+        chip8.eval_opcode(0x5790);
 
         assert_eq!(chip8.pc, 0x204, "Skip");
 
-        chip8.run_opcode(0x5780);
+        chip8.eval_opcode(0x5780);
 
         assert_eq!(chip8.pc, 0x206, "Next");
     }
@@ -424,7 +482,7 @@ mod tests {
     fn test_op_6xkk() {
         let mut chip8 = Chip8::new();
 
-        chip8.run_opcode(0x6789);
+        chip8.eval_opcode(0x6789);
 
         assert_eq!(chip8.v[7], 0x89);
         assert_eq!(chip8.pc, 0x202);
@@ -435,7 +493,7 @@ mod tests {
         let mut chip8 = Chip8::new();
         chip8.v[8] = 5;
 
-        chip8.run_opcode(0x7804);
+        chip8.eval_opcode(0x7804);
 
         assert_eq!(chip8.v[8], 0x09);
         assert_eq!(chip8.pc, 0x202);
@@ -447,7 +505,7 @@ mod tests {
         chip8.v[3] = 4;
         chip8.v[5] = 6;
 
-        chip8.run_opcode(0x8350);
+        chip8.eval_opcode(0x8350);
 
         assert_eq!(chip8.v[3], 0x06);
         assert_eq!(chip8.pc, 0x202);
@@ -459,7 +517,7 @@ mod tests {
         chip8.v[3] = 0xF0;
         chip8.v[5] = 0x0F;
 
-        chip8.run_opcode(0x8351);
+        chip8.eval_opcode(0x8351);
 
         assert_eq!(chip8.v[3], 0xFF);
         assert_eq!(chip8.pc, 0x202);
@@ -471,7 +529,7 @@ mod tests {
         chip8.v[3] = 0xF0;
         chip8.v[5] = 0xFF;
 
-        chip8.run_opcode(0x8352);
+        chip8.eval_opcode(0x8352);
 
         assert_eq!(chip8.v[3], 0xF0);
         assert_eq!(chip8.pc, 0x202);
@@ -483,7 +541,7 @@ mod tests {
         chip8.v[3] = 0x0F;
         chip8.v[5] = 0xFF;
 
-        chip8.run_opcode(0x8353);
+        chip8.eval_opcode(0x8353);
 
         assert_eq!(chip8.v[3], 0xF0);
         assert_eq!(chip8.pc, 0x202);
@@ -497,13 +555,13 @@ mod tests {
         chip8.v[6] = 0xFF;
         chip8.v[7] = 0x0F;
 
-        chip8.run_opcode(0x8124);
+        chip8.eval_opcode(0x8124);
 
         assert_eq!(chip8.v[1], 0x0A);
         assert_eq!(chip8.v[0xF], 0x00);
         assert_eq!(chip8.pc, 0x202);
 
-        chip8.run_opcode(0x8674);
+        chip8.eval_opcode(0x8674);
 
         assert_eq!(chip8.v[6], 0x0E);
         assert_eq!(chip8.v[0xF], 0x01);
@@ -518,13 +576,13 @@ mod tests {
         chip8.v[6] = 0x0F;
         chip8.v[7] = 0xFF;
 
-        chip8.run_opcode(0x8125);
+        chip8.eval_opcode(0x8125);
 
         assert_eq!(chip8.v[1], 0x01);
         assert_eq!(chip8.v[0xF], 0x01);
         assert_eq!(chip8.pc, 0x202);
 
-        chip8.run_opcode(0x8675);
+        chip8.eval_opcode(0x8675);
 
         assert_eq!(chip8.v[6], 0x10);
         assert_eq!(chip8.v[0xF], 0x00);
@@ -537,13 +595,13 @@ mod tests {
         chip8.v[1] = 0x05;
         chip8.v[2] = 0x04;
 
-        chip8.run_opcode(0x8106);
+        chip8.eval_opcode(0x8106);
 
         assert_eq!(chip8.v[1], 0x02);
         assert_eq!(chip8.v[0xF], 0x01);
         assert_eq!(chip8.pc, 0x202);
 
-        chip8.run_opcode(0x8206);
+        chip8.eval_opcode(0x8206);
 
         assert_eq!(chip8.v[2], 0x02);
         assert_eq!(chip8.v[0xF], 0x00);
@@ -557,13 +615,13 @@ mod tests {
         chip8.v[2] = 0x02;
         chip8.v[3] = 0x03;
 
-        chip8.run_opcode(0x8127);
+        chip8.eval_opcode(0x8127);
 
         assert_eq!(chip8.v[1], 0x01);
         assert_eq!(chip8.v[0xF], 0x01);
         assert_eq!(chip8.pc, 0x202);
 
-        chip8.run_opcode(0x8317);
+        chip8.eval_opcode(0x8317);
 
         assert_eq!(chip8.v[3], 0xFE);
         assert_eq!(chip8.v[0xF], 0x00);
@@ -576,13 +634,13 @@ mod tests {
         chip8.v[1] = 0xFF;
         chip8.v[2] = 0x0F;
 
-        chip8.run_opcode(0x810e);
+        chip8.eval_opcode(0x810e);
 
         assert_eq!(chip8.v[1], 0xFE);
         assert_eq!(chip8.v[0xF], 0x01);
         assert_eq!(chip8.pc, 0x202);
 
-        chip8.run_opcode(0x820e);
+        chip8.eval_opcode(0x820e);
 
         assert_eq!(chip8.v[2], 0x1E);
         assert_eq!(chip8.v[0xF], 0x00);
@@ -593,7 +651,7 @@ mod tests {
     fn test_op_9xy0() {
         let mut chip8 = Chip8::new();
 
-        chip8.run_opcode(0xa123);
+        chip8.eval_opcode(0xa123);
 
         assert_eq!(chip8.i, 0x123);
         assert_eq!(chip8.pc, 0x202);
@@ -603,7 +661,7 @@ mod tests {
     fn test_op_annn() {
         let mut chip8 = Chip8::new();
 
-        chip8.run_opcode(0xa123);
+        chip8.eval_opcode(0xa123);
 
         assert_eq!(chip8.i, 0x123);
         assert_eq!(chip8.pc, 0x202);
@@ -614,7 +672,7 @@ mod tests {
         let mut chip8 = Chip8::new();
         chip8.v[0] = 5;
 
-        chip8.run_opcode(0xb123);
+        chip8.eval_opcode(0xb123);
 
         assert_eq!(chip8.pc, 0x128);
     }
@@ -624,16 +682,16 @@ mod tests {
         let mut chip8 = Chip8::new();
         chip8.v[0] = 0;
 
-        chip8.run_opcode(0xc000);
+        chip8.eval_opcode(0xc000);
 
         assert_eq!(chip8.v[0], 0x0);
 
-        chip8.run_opcode(0xc00F);
+        chip8.eval_opcode(0xc00F);
 
         assert_eq!(chip8.v[0] & 0xF0, 0x0);
     }
 
-#[test]
+    #[test]
     fn test_op_dxyn() {
         let mut chip8 = Chip8::new();
 
@@ -645,7 +703,8 @@ mod tests {
         chip8.screen[1][0] = 1;
         chip8.screen[1][1] = 0;
         chip8.v[0] = 0;
-        chip8.run_opcode(0xd002);
+
+        chip8.eval_opcode(0xd002);
 
         assert_eq!(chip8.screen[0][0], 0);
         assert_eq!(chip8.screen[0][1], 1);
@@ -655,45 +714,106 @@ mod tests {
         assert_eq!(chip8.pc, 0x202);
     }
 
-    // #[test]
-    // fn test_op_ex9e() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    #[test]
+    fn test_op_ex9e() {
+        let mut chip8 = Chip8::new();
 
-    // #[test]
-    // fn test_op_exa1() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        chip8.keypad[0xA] = true;
+        chip8.v[0x4] = 0xA;
 
-    // #[test]
-    // fn test_op_fx07() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        chip8.eval_opcode(0xe49e);
+
+        assert_eq!(chip8.pc, 0x204, "keypad[v[x]] == true");
+
+        chip8.eval_opcode(0xe59e);
+
+        assert_eq!(chip8.pc, 0x206, "keypad[v[x]] == false");
+    }
+
+    #[test]
+    fn test_op_exa1() {
+        let mut chip8 = Chip8::new();
+
+        chip8.keypad[0xA] = true;
+        chip8.v[0x4] = 0xA;
+
+        chip8.eval_opcode(0xe4a1);
+
+        assert_eq!(chip8.pc, 0x202, "keypad[v[x]] == false");
+
+        chip8.eval_opcode(0xe59e);
+
+        assert_eq!(chip8.pc, 0x204, "keypad[v[x]] == true");
+    }
+
+    #[test]
+    fn test_op_fx07() {
+        let mut chip8 = Chip8::new();
+
+        chip8.delay_timer = 40;
+        chip8.v[0x4] = 15;
+
+        chip8.eval_opcode(0xf407);
+
+        assert_eq!(chip8.v[4], 40);
+        assert_eq!(chip8.pc, 0x202);
+    }
 
     // #[test]
     // fn test_op_fx0a() {
     //     assert_eq!(2 + 2, 5);
     // }
 
-    // #[test]
-    // fn test_op_fx15() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    #[test]
+    fn test_op_fx15() {
+        let mut chip8 = Chip8::new();
 
-    // #[test]
-    // fn test_op_fx18() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        chip8.delay_timer = 40;
+        chip8.v[0x4] = 15;
 
-    // #[test]
-    // fn test_op_fx1e() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        chip8.eval_opcode(0xf415);
 
-    // #[test]
-    // fn test_op_fx29() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        assert_eq!(chip8.delay_timer, 15);
+        assert_eq!(chip8.pc, 0x202);
+    }
+
+    #[test]
+    fn test_op_fx18() {
+        let mut chip8 = Chip8::new();
+
+        chip8.sound_timer = 40;
+        chip8.v[0x4] = 15;
+
+        chip8.eval_opcode(0xf418);
+
+        assert_eq!(chip8.sound_timer, 15);
+        assert_eq!(chip8.pc, 0x202);
+    }
+
+    #[test]
+    fn test_op_fx1e() {
+        let mut chip8 = Chip8::new();
+
+        chip8.i = 14;
+        chip8.v[0x4] = 15;
+
+        chip8.eval_opcode(0xf41e);
+
+        assert_eq!(chip8.i, 29);
+        assert_eq!(chip8.pc, 0x202);
+    }
+
+    #[test]
+    fn test_op_fx29() {
+        let mut chip8 = Chip8::new();
+
+        chip8.v[0x4] = 4;
+
+        chip8.eval_opcode(0xf429);
+
+        assert_eq!(chip8.i, 20);
+        assert_eq!(chip8.pc, 0x202);
+    }
 
     // #[test]
     // fn test_op_fx33() {

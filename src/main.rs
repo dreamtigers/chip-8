@@ -1,7 +1,10 @@
+use sdl2;
+
 use std::time::Duration;
 use std::thread;
 
 mod display;
+mod keypad;
 
 use chip_8::Chip8;
 
@@ -10,16 +13,25 @@ use chip_8::Chip8;
 const TIME : Duration = Duration::from_millis(17);
 
 fn main() {
+    let sdl_context = sdl2::init().unwrap();
+
     let mut chip8 = Chip8::new();
-    let mut display = display::Display::new();
+    let mut display = display::Display::new(&sdl_context);
+    let mut keypad = keypad::Keypad::new(&sdl_context);
 
-    loop {
-        thread::sleep(TIME);
+    'running : loop {
+        let keys = match keypad.poll() {
+            Ok(k) => k,
+            Err(e) => {
+                println!("{}", e);
+                break 'running;
+            },
+        };
 
-        chip8.cycle();
+        chip8.cycle(keys);
 
         display.draw(&chip8.screen);
 
-        // chip8.set_keys();
+        thread::sleep(TIME);
     }
 }

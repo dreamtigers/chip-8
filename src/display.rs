@@ -1,4 +1,5 @@
 use sdl2;
+use sdl2::Sdl;
 use sdl2::pixels::Color;
 use sdl2::rect::Rect;
 use sdl2::render::Canvas;
@@ -14,8 +15,7 @@ pub struct Display {
 }
 
 impl Display {
-    pub fn new() -> Display {
-        let sdl_context = sdl2::init().unwrap();
+    pub fn new(sdl_context: &Sdl) -> Display {
         let video_subsystem = sdl_context.video().unwrap();
 
         let window = video_subsystem.window("Chip-8", 800, 600)
