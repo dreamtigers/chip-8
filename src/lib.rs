@@ -36,9 +36,12 @@ pub struct Chip8 {
     // The RAM
     memory: [u8; CHIP8_RAM],
     pub screen: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
-    keypad: [bool; 16],
+    pub keypad: [bool; 16],
     delay_timer: u8,
     sound_timer: u8,
+
+    keypad_waiting: bool,
+    keypad_register: usize,
 }
 
 impl Chip8 {
@@ -60,10 +63,12 @@ impl Chip8 {
             keypad: [false; 16],
             delay_timer: 0,
             sound_timer: 0,
+            keypad_waiting: false,
+            keypad_register: 0,
         }
     }
 
-    pub fn load(&mut self, data: &[u8]) -> () {
+    pub fn load(&mut self, data: &[u8]) {
         for (i, &byte) in data.iter().enumerate() {
             let addr = self.pc + i;
             if addr < CHIP8_RAM {
@@ -75,19 +80,27 @@ impl Chip8 {
 
     }
 
-    pub fn cycle(&mut self, keypad: [bool; 16]) -> () {
-        self.keypad = keypad;
+    pub fn cycle(&mut self) {
+        if self.keypad_waiting {
+            for i in 0..self.keypad.len() {
+                if self.keypad[i] {
+                    self.keypad_waiting = false;
+                    self.v[self.keypad_register] = i as u8;
+                    break;
+                }
+            }
+        } else {
+            if self.delay_timer > 0 {
+                self.delay_timer -= 1
+            }
+            if self.sound_timer > 0 {
+                self.sound_timer -= 1
+            }
 
-        if self.delay_timer > 0 {
-            self.delay_timer -= 1
+            let opcode = self.read_opcode();
+
+            self.eval_opcode(opcode);
         }
-        if self.sound_timer > 0 {
-            self.sound_timer -= 1
-        }
-
-        let opcode = self.read_opcode();
-
-        self.eval_opcode(opcode);
     }
 
     pub fn read_opcode(&self) -> u16 {
@@ -131,14 +144,14 @@ impl Chip8 {
             (0x0e,    _, 0x09, 0x0e) => self.op_ex9e(x),
             (0x0e,    _, 0x0a, 0x01) => self.op_exa1(x),
             (0x0f,    _, 0x00, 0x07) => self.op_fx07(x),
-            // (0x0f,    _, 0x00, 0x0a) => self.op_fx0a(x),
+            (0x0f,    _, 0x00, 0x0a) => self.op_fx0a(x),
             (0x0f,    _, 0x01, 0x05) => self.op_fx15(x),
             (0x0f,    _, 0x01, 0x08) => self.op_fx18(x),
             (0x0f,    _, 0x01, 0x0e) => self.op_fx1e(x),
             (0x0f,    _, 0x02, 0x09) => self.op_fx29(x),
-            // (0x0f,    _, 0x03, 0x03) => self.op_fx33(x),
-            // (0x0f,    _, 0x05, 0x05) => self.op_fx55(x),
-            // (0x0f,    _, 0x06, 0x05) => self.op_fx65(x),
+            (0x0f,    _, 0x03, 0x03) => self.op_fx33(x),
+            (0x0f,    _, 0x05, 0x05) => self.op_fx55(x),
+            (0x0f,    _, 0x06, 0x05) => self.op_fx65(x),
             _ => ProgramCounter::Next,
         };
 
@@ -306,11 +319,12 @@ impl Chip8 {
         ProgramCounter::Next
     }
 
-    // fn op_fx0a(&mut self, x: usize) -> ProgramCounter {
-    //     self.v[x] = self.i;
+    fn op_fx0a(&mut self, x: usize) -> ProgramCounter {
+        self.keypad_waiting = true;
+        self.keypad_register = x;
 
-    //     ProgramCounter::Next
-    // }
+        ProgramCounter::Next
+    }
 
     fn op_fx15(&mut self, x: usize) -> ProgramCounter {
         self.delay_timer = self.v[x];
@@ -338,6 +352,30 @@ impl Chip8 {
 
     fn op_fx29(&mut self, x: usize) -> ProgramCounter {
         self.i = (self.v[x] as u16) * 5;
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx33(&mut self, x: usize) -> ProgramCounter {
+        self.memory[self.i as usize] = self.v[x] / 100;
+        self.memory[(self.i as usize) + 1] = (self.v[x] % 100) / 10;
+        self.memory[(self.i as usize) + 2] = self.v[x] % 10;
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx55(&mut self, x: usize) -> ProgramCounter {
+        for i in 0..(x + 1) {
+            self.memory[(self.i as usize) + i] = self.v[i];
+        }
+
+        ProgramCounter::Next
+    }
+
+    fn op_fx65(&mut self, x: usize) -> ProgramCounter {
+        for i in 0..(x + 1) {
+            self.v[i] = self.memory[(self.i as usize) + i];
+        }
 
         ProgramCounter::Next
     }
@@ -759,10 +797,30 @@ mod tests {
         assert_eq!(chip8.pc, 0x202);
     }
 
-    // #[test]
-    // fn test_op_fx0a() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    #[test]
+    fn test_op_fx0a() {
+        let mut chip8 = Chip8::new();
+
+        chip8.eval_opcode(0xf50a);
+        assert_eq!(chip8.keypad_waiting, true);
+        assert_eq!(chip8.keypad_register, 5);
+        assert_eq!(chip8.pc, 0x202);
+
+        // Tick with no keypresses doesn't do anything
+        chip8.keypad = [false; 16];
+        chip8.cycle();
+        assert_eq!(chip8.keypad_waiting, true);
+        assert_eq!(chip8.keypad_register, 5);
+        assert_eq!(chip8.pc, 0x202);
+
+        // Tick with a keypress finishes wait and loads
+        // first pressed key into vx
+        chip8.keypad = [true; 16];
+        chip8.cycle();
+        assert_eq!(chip8.keypad_waiting, false);
+        assert_eq!(chip8.v[5], 0);
+        assert_eq!(chip8.pc, 0x202);
+    }
 
     #[test]
     fn test_op_fx15() {
@@ -815,18 +873,45 @@ mod tests {
         assert_eq!(chip8.pc, 0x202);
     }
 
-    // #[test]
-    // fn test_op_fx33() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    #[test]
+    fn test_op_fx33() {
+        let mut chip8 = Chip8::new();
 
-    // #[test]
-    // fn test_op_fx55() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+        chip8.v[5] = 123;
+        chip8.i = 1000;
+        chip8.eval_opcode(0xf533);
+        assert_eq!(chip8.memory[1000], 1);
+        assert_eq!(chip8.memory[1001], 2);
+        assert_eq!(chip8.memory[1002], 3);
+        assert_eq!(chip8.pc, 0x202);
 
-    // #[test]
-    // fn test_op_fx65() {
-    //     assert_eq!(2 + 2, 5);
-    // }
+    }
+
+    #[test]
+    fn test_op_fx55() {
+        let mut chip8 = Chip8::new();
+
+        chip8.i = 1000;
+        chip8.eval_opcode(0xff55);
+        for i in 0..16 {
+            assert_eq!(chip8.memory[1000 + i as usize], chip8.v[i]);
+        }
+        assert_eq!(chip8.pc, 0x202);
+    }
+
+    #[test]
+    fn test_op_fx65() {
+        let mut chip8 = Chip8::new();
+
+        for i in 0..16 as usize {
+            chip8.memory[1000 + i] = i as u8;
+        }
+        chip8.i = 1000;
+        chip8.eval_opcode(0xff65);
+
+        for i in 0..16 as usize {
+            assert_eq!(chip8.v[i], chip8.memory[1000 + i]);
+        }
+        assert_eq!(chip8.pc, 0x202);
+    }
 }
