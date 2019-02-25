@@ -37,8 +37,8 @@ pub struct Chip8 {
     memory: [u8; CHIP8_RAM],
     pub screen: [[u8; CHIP8_WIDTH]; CHIP8_HEIGHT],
     pub keypad: [bool; 16],
+    pub sound_timer: u8,
     delay_timer: u8,
-    sound_timer: u8,
 
     keypad_waiting: bool,
     keypad_register: usize,
