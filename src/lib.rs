@@ -152,7 +152,7 @@ impl Chip8 {
             (0x0f,    _, 0x03, 0x03) => self.op_fx33(x),
             (0x0f,    _, 0x05, 0x05) => self.op_fx55(x),
             (0x0f,    _, 0x06, 0x05) => self.op_fx65(x),
-            _ => ProgramCounter::Next,
+            _                        => self.no_impl(opcode),
         };
 
         match pc_change {
@@ -376,6 +376,13 @@ impl Chip8 {
         for i in 0..(x + 1) {
             self.v[i] = self.memory[(self.i as usize) + i];
         }
+
+        ProgramCounter::Next
+    }
+
+    fn no_impl(&self, opcode: u16) -> ProgramCounter {
+        println!("Not implemented: opcode {:x} in memory address {:x}",
+                 opcode, self.pc);
 
         ProgramCounter::Next
     }
@@ -912,6 +919,15 @@ mod tests {
         for i in 0..16 as usize {
             assert_eq!(chip8.v[i], chip8.memory[1000 + i]);
         }
+        assert_eq!(chip8.pc, 0x202);
+    }
+
+    #[test]
+    fn test_no_impl() {
+        let mut chip8 = Chip8::new();
+
+        chip8.eval_opcode(0xFFFF);
+
         assert_eq!(chip8.pc, 0x202);
     }
 }
