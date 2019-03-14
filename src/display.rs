@@ -8,7 +8,9 @@ use sdl2::video::Window;
 use chip_8::CHIP8_WIDTH;
 use chip_8::CHIP8_HEIGHT;
 
-const SCALE: u32 = 16;
+const SCALE: u32 = 20;
+const DISPLAY_WIDTH: u32 = (CHIP8_WIDTH as u32) * SCALE;
+const DISPLAY_HEIGHT: u32 = (CHIP8_HEIGHT as u32) * SCALE;
 
 pub struct Display {
     canvas: Canvas<Window>,
@@ -18,7 +20,7 @@ impl Display {
     pub fn new(sdl_context: &Sdl) -> Display {
         let video_subsystem = sdl_context.video().unwrap();
 
-        let window = video_subsystem.window("Chip-8", 800, 600)
+        let window = video_subsystem.window("Chip-8", DISPLAY_WIDTH, DISPLAY_HEIGHT)
             .position_centered()
             .opengl()
             .build()
@@ -36,7 +38,6 @@ impl Display {
     }
 
     pub fn draw(&mut self, screen: &[[u8; CHIP8_WIDTH]; CHIP8_HEIGHT]) {
-        println!("help");
         for (y, row) in screen.iter().enumerate() {
             for (x, &col) in row.iter().enumerate() {
                 let x = (x as u32) * SCALE;
