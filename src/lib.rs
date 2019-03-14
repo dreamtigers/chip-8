@@ -755,6 +755,52 @@ mod tests {
         assert_eq!(chip8.pc, 0x202);
     }
 
+
+    #[test]
+    fn test_op_dxyn_wrap_horizontal() {
+        let mut chip8 = Chip8::new();
+
+        let x = CHIP8_WIDTH - 4;
+
+        chip8.i = 0;
+        chip8.memory[0] = 0b11111111;
+        chip8.v[0] = x as u8;
+        chip8.v[1] = 0;
+        chip8.eval_opcode(0xd011);
+
+        assert_eq!(chip8.screen[0][x - 1], 0);
+        assert_eq!(chip8.screen[0][x], 1);
+        assert_eq!(chip8.screen[0][x + 1], 1);
+        assert_eq!(chip8.screen[0][x + 2], 1);
+        assert_eq!(chip8.screen[0][x + 3], 1);
+        assert_eq!(chip8.screen[0][0], 1);
+        assert_eq!(chip8.screen[0][1], 1);
+        assert_eq!(chip8.screen[0][2], 1);
+        assert_eq!(chip8.screen[0][3], 1);
+        assert_eq!(chip8.screen[0][4], 0);
+
+        assert_eq!(chip8.v[0xF], 0);
+    }
+
+    // DRW Vx, Vy, nibble
+    #[test]
+    fn test_op_dxyn_wrap_vertical() {
+        let mut chip8 = Chip8::new();
+
+        let y = CHIP8_HEIGHT - 1;
+
+        chip8.i = 0;
+        chip8.memory[0] = 0b11111111;
+        chip8.memory[1] = 0b11111111;
+        chip8.v[0] = 0;
+        chip8.v[1] = y as u8;
+        chip8.eval_opcode(0xd012);
+
+        assert_eq!(chip8.screen[y][0], 1);
+        assert_eq!(chip8.screen[0][0], 1);
+        assert_eq!(chip8.v[0x0f], 0);
+    }
+
     #[test]
     fn test_op_ex9e() {
         let mut chip8 = Chip8::new();
