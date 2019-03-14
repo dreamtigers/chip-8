@@ -173,10 +173,9 @@ impl Chip8 {
     }
 
     fn op_00ee(&mut self) -> ProgramCounter {
-        self.pc = self.stack[self.sp as usize] as usize;
         self.sp -= 1;
 
-        ProgramCounter::Jump(self.pc as u16)
+        ProgramCounter::Jump(self.stack[self.sp])
     }
 
     fn op_1nnn(&mut self, nnn: u16) -> ProgramCounter {
@@ -184,7 +183,7 @@ impl Chip8 {
     }
 
     fn op_2nnn(&mut self, nnn: u16) -> ProgramCounter {
-        self.stack[(self.sp as usize)] = self.pc as u16;
+        self.stack[(self.sp as usize)] = (self.pc + OPCODE_SIZE) as u16;
         self.sp += 1;
         ProgramCounter::Jump(nnn)
     }
@@ -381,10 +380,8 @@ impl Chip8 {
     }
 
     fn no_impl(&self, opcode: u16) -> ProgramCounter {
-        println!("Not implemented: opcode {:x} in memory address {:x}",
+        panic!("Not implemented: opcode {:x} in memory address {:x}",
                  opcode, self.pc);
-
-        ProgramCounter::Next
     }
 }
 
@@ -446,15 +443,14 @@ mod tests {
     #[test]
     fn test_op_00ee() {
         let mut chip8 = Chip8::new();
-        chip8.pc = 0x432;
-        chip8.sp = 1;
-        chip8.stack[chip8.sp as usize] = 0x200;
+
+        chip8.sp = 5;
+        chip8.stack[4] = 0x6666;
 
         chip8.eval_opcode(0x00EE);
 
-        assert_eq!(chip8.pc, 0x200, "Program Counter");
-        assert_eq!(chip8.stack[0], 0, "Stack");
-        assert_eq!(chip8.sp, 0, "Stack Pointer");
+        assert_eq!(chip8.sp, 4, "Stack Pointer");
+        assert_eq!(chip8.pc, 0x6666, "Program Counter");
     }
 
     #[test]
@@ -473,8 +469,8 @@ mod tests {
         chip8.eval_opcode(0x2F4C);
 
         assert_eq!(chip8.pc, 0x0F4C, "Program Counter");
-        assert_eq!(chip8.stack[0], 0x200 as u16, "Stack");
         assert_eq!(chip8.sp, 1, "Stack Pointer");
+        assert_eq!(chip8.stack[0], 0x202 as u16, "Stack");
     }
 
     #[test]
@@ -923,11 +919,10 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_no_impl() {
         let mut chip8 = Chip8::new();
 
         chip8.eval_opcode(0xFFFF);
-
-        assert_eq!(chip8.pc, 0x202);
     }
 }
