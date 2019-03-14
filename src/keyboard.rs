@@ -2,7 +2,7 @@ use sdl2::EventPump;
 use sdl2::keyboard::Scancode;
 
 pub fn poll(event_pump: &EventPump, keypad: &mut [bool; 16]) {
-    let keys: Vec<Scancode> = event_pump
+    let keyboard: Vec<Scancode> = event_pump
         .keyboard_state()
         .pressed_scancodes()
         // Scancodes represent the physical position of the key, modeled
@@ -11,12 +11,12 @@ pub fn poll(event_pump: &EventPump, keypad: &mut [bool; 16]) {
         // a 'q' scancode and an 'a' keycode.
         .collect();
 
-    // | 1 | 2 | 3 | C |    | 1 | 2 | 3 | 4 |
-    // | 4 | 5 | 6 | D | -> | Q | W | E | R |
-    // | 7 | 8 | 9 | E |    | A | S | D | F |
-    // | A | 0 | B | F |    | Z | X | C | V |
-    for key in keys {
-        let index = match key {
+    // | 1 | 2 | 3 | 4 |    | 1 | 2 | 3 | C |
+    // | Q | W | E | R | -> | 4 | 5 | 6 | D |
+    // | A | S | D | F |    | 7 | 8 | 9 | E |
+    // | Z | X | C | V |    | A | 0 | B | F |
+    for pressed_key in keyboard {
+        let index = match pressed_key {
             Scancode::Num1 => Some(0x1),
             Scancode::Num2 => Some(0x2),
             Scancode::Num3 => Some(0x3),
