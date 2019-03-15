@@ -291,6 +291,7 @@ impl Chip8 {
     }
 
     fn op_dxyn(&mut self, x: usize, y: usize, n: usize) -> ProgramCounter {
+        self.v[0xF] = 0;
         for byte in 0..n {
             let y = (self.v[y] as usize + byte) % CHIP8_HEIGHT;
             for bit in 0..8 {
