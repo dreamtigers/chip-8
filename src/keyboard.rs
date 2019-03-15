@@ -1,7 +1,9 @@
 use sdl2::EventPump;
 use sdl2::keyboard::Scancode;
 
-pub fn poll(event_pump: &EventPump, keypad: &mut [bool; 16]) {
+pub fn poll(event_pump: &EventPump) -> [bool; 16] {
+    let mut keys = [false; 16];
+
     let keyboard: Vec<Scancode> = event_pump
         .keyboard_state()
         .pressed_scancodes()
@@ -37,7 +39,9 @@ pub fn poll(event_pump: &EventPump, keypad: &mut [bool; 16]) {
         };
 
         if let Some(i) = index {
-            keypad[i] = true;
+            keys[i] = true;
         }
     }
+
+    keys
 }

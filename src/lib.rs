@@ -81,6 +81,10 @@ impl Chip8 {
 
     }
 
+    pub fn set_keypad(&mut self, keyboard: [bool; 16]) {
+        self.keypad = keyboard;
+    }
+
     pub fn cycle(&mut self) {
         if self.keypad_waiting {
             for i in 0..self.keypad.len() {

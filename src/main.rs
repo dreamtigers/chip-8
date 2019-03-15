@@ -29,7 +29,8 @@ fn main() {
             };
         };
 
-        keyboard::poll(&event_pump, &mut chip8.keypad);
+        let keyboard = keyboard::poll(&event_pump);
+        chip8.set_keypad(keyboard);
 
         chip8.cycle();
 
