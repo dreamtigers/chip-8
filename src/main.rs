@@ -1,6 +1,8 @@
 use sdl2;
 use sdl2::event::Event;
 
+use std::env;
+use std::fs;
 use std::time::Duration;
 use std::thread;
 
@@ -10,17 +12,20 @@ mod audio;
 mod display;
 mod keyboard;
 
-// Chip-8 Ran at 60 Hz, or 60 frames/second.
-// That means each frame lasted 16.7 =~ 17 ms.
-const TIME : Duration = Duration::from_millis(17);
+const TIME : Duration = Duration::from_millis(2);
 
 fn main() {
+    let filename = env::args().nth(1).expect("Filename not specified");
+    let data = fs::read(filename).expect("There was a problem opening the file");
+
     let     sdl_context = sdl2::init().unwrap();
     let mut event_pump  = sdl_context.event_pump().unwrap();
 
     let mut chip8   = Chip8::new();
     let     audio   = audio::Audio::new(&sdl_context);
     let mut display = display::Display::new(&sdl_context);
+
+    chip8.load(&data);
 
     'running : loop {
         for event in event_pump.poll_iter() {
